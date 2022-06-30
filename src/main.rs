@@ -13,8 +13,9 @@ pub struct StreamCounter {
     index: usize,
     base: f64,
     count: u64,
-    last_key: u64,
-    last_pts: Option<i64>,
+    pts: Option<i64>,
+    key_count: u64,
+    key_pts: Option<i64>,
 }
 impl StreamCounter {
     pub fn new(stream: Stream<'_>) -> Self {
@@ -27,24 +28,37 @@ impl StreamCounter {
             index: stream.index(),
             base: time_base,
             count: 0,
-            last_key: 0,
-            last_pts: None,
+            pts: None,
+            key_count: 0,
+            key_pts: None,
         }
     }
     pub fn index(&self) -> usize { self.index } 
     pub fn consume(&mut self, packet: &Packet) {
         if let (true, Some(pts)) = (packet.is_key(), packet.pts()) {
-            let bytes_delta = self.count - self.last_key;
-            if let (true, Some(last_pts)) = (bytes_delta > 0, self.last_pts) {
-                let pts_delta = pts - last_pts;
+            let bytes_delta = self.count - self.key_count;
+            if let (true, Some(key_pts)) = (bytes_delta > 0, self.key_pts) {
+                let pts_delta = pts - key_pts;
                 let bps = 8.0 * bytes_delta as f64 / (pts_delta as f64 * self.base);
                 let time = pts as f64 * self.base;
                 println!("[{}] ty={:?} time={}, bps={}", self.index, self.ty, time, bps);
             }
-            self.last_key = self.count;
-            self.last_pts = Some(pts);
+            self.key_count = self.count;
+            self.key_pts = Some(pts);
         }
+        self.pts = packet.pts().or(self.pts);
         self.count += packet.size() as u64;
+    }
+    pub fn flush(&mut self) {
+        let bytes_delta = self.count - self.key_count;
+        if let (true, Some(pts), Some(key_pts)) = (bytes_delta > 0, self.pts, self.key_pts) {
+            let pts_delta = pts - key_pts;
+            if pts_delta > 0 {
+                let bps = 8.0 * bytes_delta as f64 / (pts_delta as f64 * self.base);
+                let time = pts as f64 * self.base;
+                println!("[{}] ty={:?} time={}, bps={}", self.index, self.ty, time, bps);
+            }
+        }
     }
 }
 
@@ -66,6 +80,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             counter.consume(&packet);
         }
     }
-    
+
+    for mut counter in counters {
+        counter.flush();
+    }
+
     Ok(())
 }
