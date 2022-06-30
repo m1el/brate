@@ -1,0 +1,9 @@
+[package]
+name = "brate"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ffmpeg = { git="https://github.com/meh/rust-ffmpeg", rev="d97f6de301d8b652442580746b92d466394baf83", features=["build"] }
