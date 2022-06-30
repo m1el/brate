@@ -1,3 +1,4 @@
+// use std::{fs::File, io::Write};
 use std::{env};
 
 use ffmpeg::{
@@ -18,12 +19,13 @@ pub struct StreamCounter {
 impl StreamCounter {
     pub fn new(stream: Stream<'_>) -> Self {
         let decoder = stream.codec().decoder();
-        let time_base = decoder.time_base();
+        let time_base = 0.001; //decoder.time_base();
         let ty = decoder.medium();
+        // println!("[{}] ty={:?} base={:?}", stream.index(), ty, time_base);
         Self {
             ty,
             index: stream.index(),
-            base: time_base.numerator() as f64 / time_base.denominator() as f64,
+            base: time_base,
             count: 0,
             last_key: 0,
             last_pts: None,
@@ -35,7 +37,7 @@ impl StreamCounter {
             let bytes_delta = self.count - self.last_key;
             if let (true, Some(last_pts)) = (bytes_delta > 0, self.last_pts) {
                 let pts_delta = pts - last_pts;
-                let bps = bytes_delta as f64 / (pts_delta as f64 * self.base);
+                let bps = 8.0 * bytes_delta as f64 / (pts_delta as f64 * self.base);
                 let time = pts as f64 * self.base;
                 println!("[{}] ty={:?} time={}, bps={}", self.index, self.ty, time, bps);
             }
@@ -57,18 +59,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut counters = ictx.streams().map(|stream| {
         StreamCounter::new(stream)
     }).collect::<Vec<_>>();
-
-    // time base for audio is borken?
-    if let Some(time_base) = counters.iter().find_map(|counter|
-        match counter.ty {
-            Type::Video => Some(counter.base),
-            _ => None
-        }
-    ) {
-        for counter in counters.iter_mut() {
-            counter.base = time_base;
-        }
-    }
 
     for res in ictx.packets() {
         let (stream, packet) = res?;
